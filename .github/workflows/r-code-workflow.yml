@@ -2,33 +2,35 @@ name: Run R Markdown Workflows
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # 毎日UTC0:00に実行
-  workflow_dispatch:
+    - cron: '0 0 * * *'   # 毎日UTCの0:00に実行
+  workflow_dispatch:       # GitHubの画面から手動実行も可能
 
 jobs:
   run_r_code:
     runs-on: ubuntu-latest
+
     steps:
-      # 1. リポジトリをチェックアウト
+      # 1. リポジトリの内容をチェックアウト
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # 2. R環境をセットアップ
+      # 2. R の環境をセットアップ（Rが使えるようにする）
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
 
-      # 3. Pandoc をインストール (追加)
+      # 3. Pandoc をインストール（R Markdown の変換に必要）
       - name: Install pandoc
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
 
-      # 4. 必要なRパッケージをインストール
+      # 4. 必要な R パッケージをインストールする
+      #    この例では、rmarkdown, tidyverse, rvest, lubridate をインストール
       - name: Install required R packages
         run: |
-          Rscript -e 'install.packages("rmarkdown", repos="https://cran.r-project.org")'
+          Rscript -e 'install.packages(c("rmarkdown", "tidyverse", "rvest", "lubridate"), repos = "https://cran.r-project.org")'
 
-      # 5. 初回のみ実行する処理が書かれたR Markdown (initial_processing.Rmd)
+      # 5. 初期処理（initial_processing.Rmd）を、初回のみ実行する
       - name: Render initial processing (if not already run)
         run: |
           if [ ! -f initialized.lock ]; then
@@ -38,7 +40,7 @@ jobs:
             echo 'Initial processing already completed.'
           fi
 
-      # 6. 毎日実行する処理が書かれたR Markdown
+      # 6. 毎日実行するタスク（daily_task.Rmd）を実行する
       - name: Render daily task
         run: |
           Rscript -e "rmarkdown::render('daily_task.Rmd')"
