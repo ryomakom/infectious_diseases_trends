@@ -87,14 +87,14 @@ cleaned_diseases <- cleaned_diseases %>%
 
 cleaned_diseases %>% 
   filter(pref=="全国") %>% 
-  write_excel_csv("data-全国.csv")
+  write_excel_csv("results/data-全国.csv")
 
 cleaned_diseases %>% 
   filter(pref=="東京都") %>% 
-  write_excel_csv("data-東京都.csv")
+  write_excel_csv("results/data-東京都.csv")
 
 cleaned_diseases %>% 
   filter(!pref %in% c("全国","東京都")) %>% 
-  write_excel_csv("data-その他.csv")
+  write_excel_csv("results/data-その他.csv")
 ```
 
