@@ -37,7 +37,7 @@ jobs:
         run: |
           # 初回の実行かどうか確認するためのチェック
           if [ ! -f initialized.lock ]; then
-            Rscript -e "rmarkdown::render('initialize_once.Rmd')"
+            Rscript -e "rmarkdown::render('initial_processing.Rmd')"
             # 実行後にロックファイルを作成して、初回実行済みとマークする
             touch initialized.lock
           else
