@@ -3,39 +3,49 @@ name: Run R Markdown Workflows
 on:
   schedule:
     - cron: '0 0 * * *'   # 毎日UTCの0:00に実行
-  workflow_dispatch:
+  workflow_dispatch:       # GitHubの画面から手動実行も可能
 
 jobs:
   run_r_code:
     runs-on: ubuntu-latest
     steps:
-      # 1. リポジトリの内容をチェックアウト
+      # 1. リポジトリの最新内容を取得する
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # 2. R の環境をセットアップ
+      # 2. R の環境をセットアップする
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
 
       # 3. 必要なシステムライブラリをインストール
-      # ※ rvest や tidyverse のビルドには libxml2-dev, libicu-dev, libssl-dev, libcurl4-openssl-dev 等が必要となる
+      #    rvest や tidyverse のビルドには libxml2-dev、libicu-dev、libssl-dev、libcurl4-openssl-dev などが必要です
       - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc libxml2-dev libicu-dev libssl-dev libcurl4-openssl-dev
 
-      # 4. 必要な R パッケージをインストール (dependencies=TRUE を指定)
+      # 4. パッケージをインストールするためのユーザーライブラリ用のフォルダを作成
+      - name: Create R library directory
+        run: mkdir -p ${{ github.workspace }}/Rlibrary
+
+      # 5. 必要な R パッケージをユーザーライブラリにインストール
       - name: Install required R packages
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
-          Rscript -e 'install.packages(c("rmarkdown", "tidyverse", "rvest", "lubridate"), dependencies = TRUE, repos = "https://cran.r-project.org")'
+          Rscript -e 'install.packages(c("rmarkdown", "tidyverse", "rvest", "lubridate"), dependencies = TRUE, repos = "https://cloud.r-project.org")'
 
-      # 4.1. 【デバッグ用】パッケージがちゃんとインストールされているか確認する
-      #- name: Verify installed R packages
-      #  run: |
-      #    Rscript -e 'library(tidyverse); library(rvest); library(lubridate); sessionInfo()'
+      # 6. 【デバッグ用】インストールしたパッケージが正しく読み込めるか確認する
+      - name: Verify installed packages
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
+        run: |
+          Rscript -e 'library(tidyverse); library(rvest); library(lubridate); print("Packages loaded successfully")'
 
-      # 5. 初回のみ実行する初期処理 (初回なら実行、以降はスキップ)
+      # 7. 初期処理（initial_processing.Rmd）を初回のみ実行する
       - name: Render initial processing (if not already run)
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
           if [ ! -f initialized.lock ]; then
             Rscript -e "rmarkdown::render('initial_processing.Rmd')"
@@ -44,7 +54,9 @@ jobs:
             echo 'Initial processing already completed.'
           fi
 
-      # 6. 毎日実行するタスクの実行
+      # 8. 毎日実行するタスク（daily_task.Rmd）を実行する
       - name: Render daily task
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
           Rscript -e "rmarkdown::render('daily_task.Rmd')"
