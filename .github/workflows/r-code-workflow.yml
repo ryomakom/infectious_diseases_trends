@@ -1,24 +1,20 @@
 name: Run R Markdown Workflows
 
-# どんなタイミングでこのワークフローを実行するかを指定
 on:
-  # 毎日UTCの0:00に実行する設定です
   schedule:
-    - cron: '0 0 * * *'
-  # GitHubの画面から手動で実行することも可能にします
-  workflow_dispatch:
+    - cron: '0 0 * * *'   # 毎日UTCの0:00に実行
+  workflow_dispatch:       # 手動実行も可能にする
 
 jobs:
   run_r_code:
-    # このジョブは最新のUbuntu環境（サーバー）で実行されます
     runs-on: ubuntu-latest
 
     steps:
-      # 1. GitHubリポジトリの内容をチェックアウト（コピー）する
+      # 1. リポジトリの内容を取得（コピー）する
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # 2. Rの環境をセットアップする（Rが使えるようになる）
+      # 2. Rの実行環境をセットアップする
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
 
@@ -27,19 +23,17 @@ jobs:
         run: |
           Rscript -e 'install.packages("rmarkdown", repos="https://cran.r-project.org")'
 
-      # 4. 毎日実行する処理が書かれたR Markdownファイル（daily_task.Rmd）を実行する
+      # 4. まず初期処理を実行する（まだ実行されていなければ）
+      - name: Render initial processing R Markdown (if not already run)
+        run: |
+          if [ ! -f initialized.lock ]; then
+            Rscript -e "rmarkdown::render('initial_processing.Rmd')"
+            touch initialized.lock
+          else
+            echo 'Initial processing already completed.'
+          fi
+
+      # 5. 初期処理が終わった後、毎日実行するタスクを実行する
       - name: Render daily R Markdown file
         run: |
           Rscript -e "rmarkdown::render('daily_task.Rmd')"
-
-      # 5. 初回のみ実行する処理が書かれたR Markdownファイル（initialize_once.Rmd）を条件付きで実行する
-      - name: Render initialization R Markdown (only if not already run)
-        run: |
-          # 初回の実行かどうか確認するためのチェック
-          if [ ! -f initialized.lock ]; then
-            Rscript -e "rmarkdown::render('initial_processing.Rmd')"
-            # 実行後にロックファイルを作成して、初回実行済みとマークする
-            touch initialized.lock
-          else
-            echo 'Initialization already completed.'
-          fi
