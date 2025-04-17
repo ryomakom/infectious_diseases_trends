@@ -7,6 +7,10 @@
   <script src="https://d3js.org/d3.v6.min.js"></script>
   <!-- 外部CSS（style.css） -->
   <link rel="stylesheet" href="style.css" />
+  <!-- スマホ用スライダー -->
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/d3-simple-slider/1.6.3/d3-simple-slider.css" />
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-simple-slider/1.6.3/d3-simple-slider.min.js"></script>
+
 </head>
 <body>
   <!-- ヘッダー部 -->
@@ -452,21 +456,29 @@
         .attr("transform", `translate(0,${contextHeight})`)
         .call(xAxisContext);
       
-      const brush = d3.brushX()
-        .extent([[0, 0], [contextWidth, contextHeight]])
-        .on("brush end", brushed);
-      
-      const brushG = svgContext.append("g")
-        .attr("class", "brush")
-        .call(brush);
-      
-      // ブラシの初期位置は、初期表示範囲（initialExtent）を使う
-      if (savedBrushExtents[category]) {
-        brushG.call(brush.move, [xContext(savedBrushExtents[category][0]), xContext(savedBrushExtents[category][1])]);
-      } else {
-        brushG.call(brush.move, [xContext(initialExtent[0]), xContext(initialExtent[1])]);
-      }
-      
+  // ── d3-simple-slider に置換 ──
+  const slider = d3.sliderBottom()
+    .min(dataExtent[0]).max(dataExtent[1])
+    .width(contextWidth)
+    .ticks(5)
+    .default(initialExtent)
+    .fill("#ff9900")
+    .displayValue(false)
+    .on("onchange", val => {
+      // フォーカス再描画ロジックは既存の brushed() と同じ
+      savedBrushExtents[category] = val;
+      // x軸ドメイン更新 → 再描画...
+      brushed({ selection: [ xContext(val[0]), xContext(val[1]) ] });
+    });
+
+  // スライダーを描画
+  sliderWrapper.append("svg")
+    .attr("width", contextWidth + contextMargin.left + contextMargin.right)
+    .attr("height", 60)
+    .append("g")
+    .attr("transform", `translate(${contextMargin.left},10)`)
+    .call(slider);
+
       function brushed(event) {
         const sel = event.selection;
         if (!sel) return;
