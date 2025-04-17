@@ -126,5 +126,6 @@ cleaned_diseases <- diseases %>%
   filter(!(category == "ＲＳウイルス感染症" & is.na(value))) %>%
   mutate(value = ifelse(is.na(value), 0, value))
 
-
+cleaned_diseases %>% 
+  write_excel_csv("merged_data/merged_data.csv")
 ```
