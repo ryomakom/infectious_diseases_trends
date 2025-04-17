@@ -3,41 +3,59 @@ name: Render R Markdown Workflows
 
 on:
   schedule:
-    - cron: '0 0 * * *'          # run daily at 00:00 UTC
-  workflow_dispatch:             # allow manual trigger
+    - cron: '0 0 * * *'          # daily at 00:00 UTC
+  workflow_dispatch:             # manual trigger
 
 jobs:
-  render_rmd:
+  run_r_code:
     runs-on: ubuntu-latest
     permissions:
-      contents: read             # enough for actions/checkout
+      contents: read             # for actions/checkout
 
     steps:
-      # 1 – Check out repository
+      # 1. Check out the repo
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # 2 – Set up R (defaults to latest release)
+      # 2. Set up R
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: 'release'   # pin a specific version if you wish
+          r-version: 'release'
 
-      # 3 – Install R *and* Linux dependencies (cached)
-      #     pak figures out the correct system libraries such as
-      #     libharfbuzz-dev and libfribidi-dev that tidyverse needs.
-      - name: Install R & system dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
+      # 3. Install OS libraries (incl. Harfbuzz/Fribidi for textshaping → tidyverse)
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pandoc \
+            libxml2-dev libicu-dev libssl-dev libcurl4-openssl-dev \
+            libfontconfig1-dev libfreetype6-dev libpng-dev libjpeg-dev libtiff5-dev \
+            libharfbuzz-dev libfribidi-dev
+
+      # 4. (Optional) cache your private package library for speed
+      - name: Cache R packages
+        uses: actions/cache@v3
         with:
-          extra-packages: |
-            any::rmarkdown
-            any::tidyverse
-            any::rvest
-            any::lubridate
-          cache: true            # speeds up subsequent runs
+          path: ${{ github.workspace }}/Rlibrary
+          key: ${{ runner.os }}-rlibs-${{ hashFiles('**/*.Rmd') }}
 
-      # 4 – Render the “first‑run” Rmd once
+      # 5. Create a per‑workflow R library and install needed R packages
+      - name: Install R packages
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
+        run: |
+          mkdir -p "$R_LIBS_USER"
+          Rscript -e 'install.packages(
+            c("rmarkdown","tidyverse","rvest","lubridate"),
+            repos="https://cloud.r-project.org",
+            dependencies=TRUE
+          )'
+
+      # 6. Render initial processing once
       - name: Render initial processing (first run only)
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
           if [ ! -f initialized.lock ]; then
             Rscript -e "rmarkdown::render('initial_processing.Rmd')"
@@ -46,6 +64,9 @@ jobs:
             echo "Initial processing already completed."
           fi
 
-      # 5 – Render the daily task
+      # 7. Render daily task
       - name: Render daily task
-        run: Rscript -e "rmarkdown::render('daily_task.Rmd')"
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
+        run: |
+          Rscript -e "rmarkdown::render('daily_task.Rmd')"
