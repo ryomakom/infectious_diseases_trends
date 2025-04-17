@@ -3,10 +3,10 @@ name: Render R Markdown Workflows
 
 on:
   schedule:
-    - cron: '0 0 * * *'          # daily at 00:00 UTC
-  workflow_dispatch:             # manual trigger
+    - cron: '0 0 * * *'    # 毎日 00:00 UTC
+  workflow_dispatch:      # 手動トリガー
 
-# 0. GITHUB_TOKEN にリポジトリ書き込み権限を付与
+# GITHUB_TOKEN にリポジトリ書き込み権限を付与
 permissions:
   contents: write
 
@@ -15,19 +15,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Check out the repo (フル履歴取得)
+      # 1. リポジトリをフル履歴付きでチェックアウト
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
-      # 2. Set up R
+      # 2. R のセットアップ
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: 'release'
 
-      # 3. Install OS libraries (incl. Harfbuzz/Fribidi for textshaping → tidyverse)
+      # 3. システム依存ライブラリのインストール
       - name: Install system libraries
         run: |
           sudo apt-get update
@@ -37,14 +39,14 @@ jobs:
             libfontconfig1-dev libfreetype6-dev libpng-dev libjpeg-dev libtiff5-dev \
             libharfbuzz-dev libfribidi-dev
 
-      # 4. (Optional) cache your private package library for speed
+      # 4. パッケージキャッシュ（任意）
       - name: Cache R packages
         uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/Rlibrary
           key: ${{ runner.os }}-rlibs-${{ hashFiles('**/*.Rmd') }}
 
-      # 5. Create a per‑workflow R library and install needed R packages
+      # 5. R パッケージのインストール
       - name: Install R packages
         env:
           R_LIBS_USER: ${{ github.workspace }}/Rlibrary
@@ -56,7 +58,7 @@ jobs:
             dependencies=TRUE
           )'
 
-      # 6. Render initial processing once
+      # 6. 初回処理
       - name: Render initial processing (first run only)
         env:
           R_LIBS_USER: ${{ github.workspace }}/Rlibrary
@@ -68,20 +70,22 @@ jobs:
             echo "Initial processing already completed."
           fi
 
-      # 7. Render daily task
+      # 7. 日次処理
       - name: Render daily task
         env:
           R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
           Rscript -e "rmarkdown::render('daily_task.Rmd')"
 
-      # 8. Commit & push generated CSVs back to repository
+      # 8. 生成された CSV をコミット＆プッシュ
       - name: Commit and push CSVs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data-全国.csv data-東京都.csv data-その他.csv merged_data/merged_data.csv
-          git diff --quiet || git commit -m "Update disease CSV outputs"
+          # 出力先と合致するパスをまとめて add
+          git add data-*.csv merged_data/*.csv || echo "No CSV files to add"
+          # 変更があればコミット
+          git diff --cached --quiet || git commit -m "Update disease CSV outputs"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
