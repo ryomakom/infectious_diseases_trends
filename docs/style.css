@@ -168,16 +168,19 @@ h1 {
   cursor: move;
 }
 
-/* ブラシハンドルを強調・上下に長くする */
 .brush .handle {
-  fill: #ffcc00;
-  stroke: #ff6600;
-  stroke-width: 3px;
+  /* 中塗りを純粋な黄色（半透明）に */
+  fill: rgba(255, 255, 0, 0.5);    /* 60% 半透明のイエロー */
+  /* 縁取りもイエローで、より不透明に */
+  stroke: rgba(255, 255, 0, 0.5);  /* 90% 半透明のイエロー */
+  stroke-width: 10px;
+  vector-effect: non-scaling-stroke;
+  
   cursor: ew-resize;
-  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.6));
-  transform: scaleY(1.5);
-  transform-origin: center;
+  filter: drop-shadow(0 0 4px rgba(0,0,0,0.6));
+  touch-action: none;
 }
+
 
 /* 凡例 */
 .legend {
@@ -280,4 +283,11 @@ header p {
   -webkit-user-select: none;
   -ms-user-select: none;
   user-select: none;
+}
+
+/* style.css に追加 or 既存ルールを上書き */
+.brush .selection {
+  fill: #ff0;       /* イエロー（#ff0 でも可） */
+  fill-opacity: 0.5;   /* 透明度はお好みで調整 */
+  cursor: move;
 }
