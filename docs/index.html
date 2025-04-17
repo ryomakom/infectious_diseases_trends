@@ -136,7 +136,7 @@
           focusHeight = 320 - focusMargin.top - focusMargin.bottom;
     const contextMargin = { top: 10, right: 100, bottom: 30, left: 70 },
           contextWidth  = 900 - contextMargin.left - contextMargin.right,
-          contextHeight = 50 - contextMargin.top - contextMargin.bottom;
+          contextHeight = 60 - contextMargin.top - contextMargin.bottom;
     
     const parseDate = d3.timeParse("%Y-%m-%d");
     const color = d3.scaleOrdinal(d3.schemeCategory10);
@@ -462,10 +462,27 @@
         .extent([[0, 0], [contextWidth, contextHeight]])
         .on("brush end", brushed);
       
-      const brushG = svgContext.append("g")
-        .attr("class", "brush")
-        .call(brush);
-      
+        // スライダー生成直後の brushG 定義
+const brushG = svgContext.append("g")
+  .attr("class", "brush")
+  .call(brush);
+
+// ハンドルを四角形に、かつサイズ固定する
+const handleWidth  = 30;               // 横幅を20px
+const handleHeight = contextHeight;    // 縦幅を contextHeight に揃える
+
+brushG.selectAll(".handle")
+  .attr("width",  handleWidth)         // 幅を指定
+  .attr("height", handleHeight)        // 高さを指定
+  .attr("rx",     0)                   // 角丸なし
+  .attr("ry",     0)
+  .attr("y",      0)                   // Y座標を 0 に
+  .attr("x", (d,i) =>                   // 左右ハンドルを中央揃え
+    i === 0
+      ? -handleWidth  / 2               // 左ハンドル
+      : contextWidth - handleWidth / 2  // 右ハンドル
+  );
+
       // ブラシの初期位置は、初期表示範囲（initialExtent）を使う
       if (savedBrushExtents[category]) {
         brushG.call(brush.move, [xContext(savedBrushExtents[category][0]), xContext(savedBrushExtents[category][1])]);
