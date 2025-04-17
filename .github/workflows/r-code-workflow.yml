@@ -83,7 +83,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 出力先と合致するパスをまとめて add
-          git add data-*.csv merged_data/*.csv || echo "No CSV files to add"
+          git add results/data-*.csv merged_data/*.csv || echo "No CSV files to add"
           # 変更があればコミット
           git diff --cached --quiet || git commit -m "Update disease CSV outputs"
           git push
