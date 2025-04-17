@@ -6,16 +6,20 @@ on:
     - cron: '0 0 * * *'          # daily at 00:00 UTC
   workflow_dispatch:             # manual trigger
 
+# 0. GITHUB_TOKEN にリポジトリ書き込み権限を付与
+permissions:
+  contents: write
+
 jobs:
   run_r_code:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read             # for actions/checkout
 
     steps:
-      # 1. Check out the repo
+      # 1. Check out the repo (フル履歴取得)
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. Set up R
       - name: Set up R
@@ -70,3 +74,14 @@ jobs:
           R_LIBS_USER: ${{ github.workspace }}/Rlibrary
         run: |
           Rscript -e "rmarkdown::render('daily_task.Rmd')"
+
+      # 8. Commit & push generated CSVs back to repository
+      - name: Commit and push CSVs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data-全国.csv data-東京都.csv data-その他.csv merged_data/merged_data.csv
+          git diff --quiet || git commit -m "Update disease CSV outputs"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
