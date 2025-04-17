@@ -254,3 +254,13 @@ header p {
 .inactive-circle {
   opacity: 0.15;
 }
+/* d3-simple-slider 用タッチ対応 */
+svg .d3-slider-track {
+  stroke-width: 8px;    /* バー太め */
+  cursor: pointer;
+}
+svg .d3-slider-handle {
+  width: 16px;          /* ハンドル幅広め */
+  height: 24px;
+  touch-action: none;   /* タッチで掴みやすく */
+}
