@@ -1,0 +1,256 @@
+body {
+  font-family: sans-serif;
+  margin: 20px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* コントロールエリア */
+#controls {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* カスタムドロップダウン */
+.dropdown {
+  position: relative;
+  display: inline-block;
+  width: 300px;
+}
+
+.dropdown-btn {
+  border: 1px solid #ccc;
+  padding: 8px;
+  background-color: #fff;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-sizing: border-box;
+}
+
+.dropdown.open .dropdown-content {
+  display: block;
+}
+
+.option {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.option:last-child {
+  border-bottom: none;
+}
+
+.option.selected {
+  background-color: #def;
+}
+
+.option .label {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.option .info {
+  font-size: 0.9em;
+  color: #555;
+}
+
+.option .week-label {
+  font-size: 0.8em;
+  color: #888;
+}
+
+/* チャート配置エリア：グリッドレイアウト */
+#chart-container {
+  display: grid;
+  grid-gap: 20px;
+}
+
+@media (min-width: 1400px) {
+  #chart-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1399px) {
+  #chart-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 899px) {
+  #chart-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 各カテゴリー全体の枠 */
+.chart {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.chart-wrapper {
+  display: flex;
+  gap: 20px;
+}
+
+.left-charts {
+  flex: 1;
+}
+
+.chart-legend {
+  width: clamp(30px, 6vw, 70px);
+}
+
+/* SVG */
+.svg-content {
+  width: 100%;
+  height: auto;
+}
+
+.axis text {
+  font-size: 30px;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.line {
+  fill: none;
+  stroke-width: 2px;
+}
+
+/* ツールチップ */
+.tooltip {
+  position: absolute;
+  text-align: center;
+  padding: 5px;
+  background: lightgray;
+  border: 0;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ブラシ（スライダー） */
+.brush .overlay {
+  fill: none;
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+/* 選択範囲をより目立たせる */
+.brush .selection {
+  fill: #ff9900;
+  fill-opacity: 0.5;
+  cursor: move;
+}
+
+/* ブラシハンドルを強調・上下に長くする */
+.brush .handle {
+  fill: #ffcc00;
+  stroke: #ff6600;
+  stroke-width: 3px;
+  cursor: ew-resize;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.6));
+  transform: scaleY(1.5);
+  transform-origin: center;
+}
+
+/* 凡例 */
+.legend {
+  text-align: center;
+  font-size: clamp(10px, 1.5vw, 15px);
+}
+
+.legend-item {
+  display: block;
+  margin: 5px 0;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* SVGの間隔 */
+.chart svg + svg {
+  margin-top: 5px;
+}
+
+/* スライダーラッパー（薄いグレー） */
+.slider-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #f0f0f0;
+  padding: 10px;
+  margin-top: 8px;
+  margin-bottom: 2px;
+  border: 1px solid #ddd;
+  flex-wrap: nowrap;
+}
+
+.slider-wrapper h3 {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 16px;
+  min-width: 70px;
+}
+
+.slider-wrapper svg {
+  flex: 1;
+  min-width: 0;
+}
+
+.chart h2 {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+  font-size: 1.2em;
+}
+
+header p {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* -------------------------------------------------- */
+/* マウスオーバー時のハイライト強化用クラス */
+/* -------------------------------------------------- */
+/* 折れ線を太くする */
+.highlight-line {
+  stroke-width: 4px !important; /* 元の2pxから太めに */
+}
+
+/* データ点を大きくする */
+.highlight-circle {
+  r: 6 !important; /* 元の3から拡大 */
+}
+
+/* クリックで非アクティブになった折れ線・サークルをフェードアウト */
+.inactive-line {
+  opacity: 0.15;
+}
+
+.inactive-circle {
+  opacity: 0.15;
+}

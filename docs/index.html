@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>主な感染症の流行状況</title>
+  <!-- D3.js v6 のCDN -->
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <!-- 外部CSS（style.css） -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ヘッダー部 -->
+  <header>
+    <h1>都道府県別にみた主な感染症の流行状況</h1>
+    <p style="font-size:16px; line-height:1.5;">
+      国立感染症研究所のデータをもとに、感染症の報告数（定点医療機関当たり）を都道府県別にグラフ化した。週単位で報告されている「5類感染症」が対象。グラフ下部にある黄色いバーの横幅を変えたり左右に動かしたりすると、表示する期間を指定できる。
+    </p>
+    <p style="font-size:14px; text-align:right;">朝日新聞デジタル企画報道部・小宮山亮磨 @ryomakom</p>
+    <hr style="margin: 20px 0; border: none; border-top: 2px solid #ddd;">
+  </header>
+
+  <!-- 都道府県選択のカスタムドロップダウン -->
+  <div id="controls">
+    <label for="pref-dropdown">表示する都道府県を選択:</label>
+    <div id="pref-dropdown" class="dropdown">
+      <div id="dropdown-btn" class="dropdown-btn">ここから選ぶ</div>
+      <div id="dropdown-content" class="dropdown-content"></div>
+    </div>
+  </div>
+  
+  <!-- グラフ描画用エリア -->
+  <div id="chart-container"></div>
+  
+  <script>
+    /***********************************************
+     * 重なり防止用関数（軸のラベル） 
+     ***********************************************/
+    function removeOverlappingTicksX(axisSelection) {
+      let lastRight = -Infinity;
+      axisSelection.selectAll("text").each(function () {
+        const rect = this.getBoundingClientRect();
+        if (rect.left < lastRight) {
+          d3.select(this).style("display", "none");
+        } else {
+          d3.select(this).style("display", null);
+          lastRight = rect.right;
+        }
+      });
+    }
+    function removeOverlappingTicksY(axisSelection) {
+      let lastBottom = -Infinity;
+      axisSelection.selectAll("text").each(function () {
+        const rect = this.getBoundingClientRect();
+        if (rect.top < lastBottom) {
+          d3.select(this).style("display", "none");
+        } else {
+          d3.select(this).style("display", null);
+          lastBottom = rect.bottom;
+        }
+      });
+    }
+    
+    /***********************************************
+     * 軸自動調整用の関数（間隔・フォーマット）
+     ***********************************************/
+    function computeTickInterval(domain) {
+      const start = domain[0], end = domain[1];
+      const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+      if (diffMonths < 6) {
+        return d3.timeMonth.every(1);
+      } else if (diffMonths < 12) {
+        return d3.timeMonth.every(2);
+      } else if (diffMonths < 24) {
+        return d3.timeMonth.every(4);
+      } else if (diffMonths < 60) {
+        return d3.timeYear.every(1);
+      } else if (diffMonths < 96) {
+        return d3.timeYear.every(2);
+      } else {
+        return d3.timeYear.every(3);
+      }
+    }
+    function computeTickFormat(domain) {
+      const start = domain[0], end = domain[1];
+      const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+      if (diffMonths < 6) {
+        return d3.timeFormat("%-m月");
+      } else if (diffMonths < 12) {
+        return d3.timeFormat("%-m月");
+      } else if (diffMonths < 24) {
+        return d3.timeFormat("%Y年%-m月");
+      } else {
+        return d3.timeFormat("%Y年");
+      }
+    }
+    
+    /***********************************************
+     * Y軸のtick値算出用関数
+     ***********************************************/
+    function computeCustomYAxisTicks(xMax) {
+      if (xMax <= 0) return [];
+      const n = Math.ceil(Math.log10(10 / xMax));
+      const scale = Math.pow(10, n);
+      const scaledMax = xMax * scale;
+      const y = Math.round(scaledMax / 3) * 3;
+      const y1 = y / 3;
+      const y2 = y / 1.5;
+      return [y1 / scale, y2 / scale];
+    }
+    
+    /***********************************************
+     * グローバル設定・変数
+     ***********************************************/
+    let allData = [];
+    const prefectureOrder = [
+      "全国", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+      "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+      "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県",
+      "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+      "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+      "徳島県", "香川県", "愛媛県", "高知県",
+      "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+    ];
+    // 各グラフごとにブラシ状態を保持
+    const savedBrushExtents = {};
+    
+    // FocusとContextのサイズ設定
+    const focusMargin = { top: 10, right: 40, bottom: 33, left: 100 },
+          focusWidth  = 900 - focusMargin.left - focusMargin.right,
+          focusHeight = 320 - focusMargin.top - focusMargin.bottom;
+    const contextMargin = { top: 10, right: 100, bottom: 30, left: 70 },
+          contextWidth  = 900 - contextMargin.left - contextMargin.right,
+          contextHeight = 50 - contextMargin.top - contextMargin.bottom;
+    
+    const parseDate = d3.timeParse("%Y-%m-%d");
+    const color = d3.scaleOrdinal(d3.schemeCategory10);
+    const tooltip = d3.select("body").append("div")
+                      .attr("class", "tooltip")
+                      .style("opacity", 0);
+    
+    // クリックで折れ線を強調表示
+    let highlightedPref = null;
+    
+    /***********************************************
+     * CSV読み込み用の関数
+     ***********************************************/
+    function loadData(fileName) {
+      return d3.csv(fileName, d => ({
+        date: parseDate(d.date),
+        value: +d.value,
+        pref: d.pref,
+        category: d.category,
+        weekLabel: d["week_label_clean"]
+      })).then(data => {
+        const valid = data.filter(d => d.date);
+        console.log(`Loaded ${fileName}: ${valid.length} records`);
+        return valid;
+      }).catch(err => {
+        console.warn(`Failed to load ${fileName}:`, err);
+        return [];
+      });
+    }
+    
+    // 初期データ（例：東京都、全国）の読み込み
+    Promise.all([
+      loadData("data/data-東京都.csv"),
+      loadData("data/data-全国.csv")
+    ]).then(results => {
+      results.forEach(dataset => { allData = allData.concat(dataset); });
+      console.log("Essential data loaded. Total records:", allData.length);
+      initializeDropdown();
+      setDefaultDropdownSelection();
+      drawAllCharts(getSelectedDropdownPrefs());
+      loadAdditionalData();
+    }).catch(err => {
+      console.error("Error loading essential CSV files:", err);
+    });
+    
+    function loadAdditionalData() {
+      loadData("data/data-その他.csv").then(dataOther => {
+        allData = allData.concat(dataOther);
+        console.log("Additional data loaded. Total records:", allData.length);
+      }).catch(err => {
+        console.error("Error loading additional CSV file:", err);
+      });
+    }
+    
+    /***********************************************
+     * カスタムドロップダウンの初期化
+     ***********************************************/
+    function initializeDropdown() {
+      const dropdownContent = d3.select("#dropdown-content");
+      dropdownContent.html("");
+      prefectureOrder.forEach(pref => {
+        dropdownContent.append("div")
+          .attr("class", "option")
+          .attr("data-pref", pref)
+          .text(pref)
+          .on("click", function(event) {
+            event.stopPropagation();
+            d3.select(this).classed("selected", !d3.select(this).classed("selected"));
+            updateDropdownBtn();
+            drawAllCharts(getSelectedDropdownPrefs());
+          });
+      });
+      
+      d3.select("#dropdown-btn").on("click", function(event) {
+        event.stopPropagation();
+        d3.select("#pref-dropdown").classed("open", !d3.select("#pref-dropdown").classed("open"));
+      });
+      
+      d3.select("body").on("click", function() {
+        d3.select("#pref-dropdown").classed("open", false);
+      });
+    }
+    
+    function setDefaultDropdownSelection() {
+      d3.selectAll("#dropdown-content .option")
+        .filter(function() {
+          const p = d3.select(this).attr("data-pref");
+          return (p === "全国" || p === "東京都");
+        })
+        .classed("selected", true);
+      updateDropdownBtn();
+    }
+    
+    function updateDropdownBtn() {
+      const selected = getSelectedDropdownPrefs();
+      const btn = d3.select("#dropdown-btn");
+      if (selected.length === 0) {
+        btn.text("ここから選ぶ");
+      } else {
+        btn.text(selected.join(", "));
+      }
+    }
+    
+    function getSelectedDropdownPrefs() {
+      const options = d3.selectAll("#dropdown-content .option").nodes();
+      return options.filter(opt => opt.classList.contains("selected"))
+                    .map(opt => opt.getAttribute("data-pref"));
+    }
+    
+    /***********************************************
+     * 全カテゴリーのグラフを描画
+     ***********************************************/
+    function drawAllCharts(selectedPrefs) {
+      d3.select("#chart-container").html("");
+      highlightedPref = null;
+      
+      // 選択された都道府県のデータをフィルタリング
+      const filtered = allData.filter(d => selectedPrefs.includes(d.pref));
+      
+      // 表示順（必要に応じて調整）
+      const categoryOrder = [
+        "インフルエンザ",
+        "ＲＳウイルス感染症",
+        "咽頭結膜熱",
+        "Ａ群溶血性レンサ球菌咽頭炎",
+        "感染性胃腸炎",
+        "水痘",
+        "手足口病",
+        "伝染性紅斑",
+        "突発性発しん",
+        "ヘルパンギーナ",
+        "流行性耳下腺炎",
+        "急性出血性結膜炎",
+        "流行性角結膜炎",
+        "細菌性髄膜炎",
+        "無菌性髄膜炎",
+        "マイコプラズマ肺炎",
+        "クラミジア肺炎",
+        "感染性胃腸炎（ロタウイルス）",
+        "COVID-19",
+        "百日咳"
+      ];
+      
+      // カテゴリーでグループ化＆ソート
+      let catGroups = d3.groups(filtered, d => d.category);
+      catGroups.sort((a, b) => {
+        const indexA = categoryOrder.indexOf(a[0]);
+        const indexB = categoryOrder.indexOf(b[0]);
+        return (indexA === -1 ? Infinity : indexA) - (indexB === -1 ? Infinity : indexB);
+      });
+      catGroups.forEach(([cat, catData]) => {
+        drawFocusContextChart(cat, catData);
+      });
+    }
+    
+    /***********************************************
+     * 1カテゴリー分のフォーカス＆コンテキストチャート
+     ***********************************************/
+    function drawFocusContextChart(category, data) {
+      // 日付でソートし最小・最大を取得（動的なスライダー設定に利用）
+      data.sort((a, b) => a.date - b.date);
+      const dataExtent = d3.extent(data, d => d.date);
+      const yMax = d3.max(data, d => d.value) || 0;
+      
+      // 初期表示範囲は最新の日付から過去1年
+      const defaultStart = new Date(
+        (dataExtent[1] || new Date()).getFullYear() - 1,
+        (dataExtent[1] || new Date()).getMonth(),
+        (dataExtent[1] || new Date()).getDate()
+      );
+      const initialExtent = savedBrushExtents[category] || [defaultStart, dataExtent[1] || new Date()];
+      
+      // チャートのコンテナ作成
+      const container = d3.select("#chart-container")
+        .append("div")
+        .attr("class", "chart");
+      container.append("h2").text(category);
+      
+      const wrapper = container.append("div")
+        .attr("class", "chart-wrapper");
+      const leftCharts = wrapper.append("div")
+        .attr("class", "left-charts");
+      
+      // Focusチャート作成
+      const svgFocus = leftCharts.append("svg")
+        .attr("class", "svg-content chart-svg")
+        .attr("viewBox", `0 0 ${focusWidth + focusMargin.left + focusMargin.right} ${focusHeight + focusMargin.top + focusMargin.bottom}`)
+        .attr("preserveAspectRatio", "xMidYMid meet")
+        .append("g")
+        .attr("transform", `translate(${focusMargin.left},${focusMargin.top})`);
+      
+      const xFocus = d3.scaleTime()
+        .domain(initialExtent)
+        .range([0, focusWidth]);
+      const yFocus = d3.scaleLinear()
+        .domain([0, yMax])
+        .range([focusHeight, 0]);
+      
+      const tickInterval = computeTickInterval(xFocus.domain());
+      const tickFormat = computeTickFormat(xFocus.domain());
+      const xAxisFocus = d3.axisBottom(xFocus).ticks(tickInterval).tickFormat(tickFormat);
+      const yTicks = computeCustomYAxisTicks(yFocus.domain()[1]);
+      const yAxisFocus = d3.axisLeft(yFocus).tickValues(yTicks);
+      
+      // Focus側のX軸
+      const xAxisG = svgFocus.append("g")
+        .attr("class", "axis x-axis")
+        .attr("transform", `translate(0,${focusHeight})`)
+        .call(xAxisFocus);
+      removeOverlappingTicksX(xAxisG);
+      
+      // Focus側のY軸
+      svgFocus.append("g")
+        .attr("class", "axis y-axis")
+        .call(yAxisFocus);
+      
+      const lineFocus = d3.line()
+        .defined(d => !isNaN(d.value))
+        .x(d => xFocus(d.date))
+        .y(d => yFocus(d.value));
+      
+      // 都道府県ごとにグループ化してデータをプロット
+      const prefGroups = d3.groups(data, d => d.pref);
+      prefGroups.forEach(([pref, arr]) => {
+        arr.sort((a, b) => a.date - b.date);
+        const lineColor = (pref === "全国") ? "blue" :
+                          (pref === "東京都") ? "red" : color(pref);
+        
+        // 折れ線
+        svgFocus.append("path")
+          .datum(arr)
+          .attr("class", `line focus-line line-${pref}`)
+          .attr("fill", "none")
+          .attr("stroke", lineColor)
+          .attr("stroke-width", 2)
+          .attr("d", lineFocus)
+          .on("mouseover", (event) => {
+            d3.select(event.currentTarget).classed("highlight-line", true);
+            tooltip.transition().duration(200).style("opacity", 0.9);
+            tooltip.html(`<strong>${pref}</strong>`)
+                   .style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mouseout", (event) => {
+            d3.select(event.currentTarget).classed("highlight-line", false);
+            tooltip.transition().duration(500).style("opacity", 0);
+          });
+        
+        // データ点（サークル）
+        svgFocus.selectAll(`circle.point-${pref}`)
+          .data(arr)
+          .enter()
+          .append("circle")
+          .attr("class", `point-${pref}`)
+          .attr("r", 3)
+          .attr("fill", lineColor)
+          .attr("cx", d => xFocus(d.date))
+          .attr("cy", d => yFocus(d.value))
+          .on("mouseover", function(event, d) {
+            d3.select(this).classed("highlight-circle", true);
+            tooltip.transition().duration(200).style("opacity", 0.9);
+            tooltip.html(`<strong>${pref}</strong><br>定点当たり患者数: ${d.value}<br>${d.weekLabel || ""}`)
+                   .style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mouseout", function() {
+            d3.select(this).classed("highlight-circle", false);
+            tooltip.transition().duration(500).style("opacity", 0);
+          });
+      });
+      
+      // 凡例（複数都道府県選択時）
+      const legendContainer = wrapper.append("div")
+        .attr("class", "chart-legend");
+      const selectedPrefs = getSelectedDropdownPrefs();
+      if (selectedPrefs.length > 1) {
+        const legend = legendContainer.append("div").attr("class", "legend");
+        const groupLookup = new Map(prefGroups);
+        selectedPrefs.forEach(pref => {
+          if (groupLookup.has(pref)) {
+            let legendColor = (pref === "全国") ? "blue" :
+                              (pref === "東京都") ? "red" : color(pref);
+            legend.append("span")
+              .attr("class", "legend-item")
+              .attr("data-pref", pref)
+              .style("color", legendColor)
+              .text(pref)
+              .on("click", () => {
+                highlightedPref = (highlightedPref === pref) ? null : pref;
+                updateVisibility(svgFocus, selectedPrefs);
+              });
+          }
+        });
+      }
+      
+      // コンテキストチャート（スライダー）の作成
+      // ★ポイント：グローバルな固定値ではなく、読み込んだデータの最小・最大日付（dataExtent）を domain に指定
+      const sliderWrapper = leftCharts.append("div")
+        .attr("class", "slider-wrapper");
+      sliderWrapper.append("h3").text("表示期間");
+      
+      const xContext = d3.scaleTime()
+        .domain(dataExtent)  // 読み込んだデータの範囲を使用
+        .range([0, contextWidth]);
+      
+      const xAxisContext = d3.axisBottom(xContext)
+        .ticks(d3.timeYear.every(3))
+        .tickFormat(d => new Date(d).getFullYear() + "年");
+      
+      const svgContext = sliderWrapper.append("svg")
+        .attr("class", "svg-content")
+        .attr("viewBox", `0 0 ${contextWidth + contextMargin.left + contextMargin.right} ${contextHeight + contextMargin.top + contextMargin.bottom}`)
+        .attr("preserveAspectRatio", "xMidYMid meet")
+        .append("g")
+        .attr("transform", `translate(${contextMargin.left},${contextMargin.top})`);
+      
+      svgContext.append("g")
+        .attr("class", "axis x-axis")
+        .attr("transform", `translate(0,${contextHeight})`)
+        .call(xAxisContext);
+      
+      const brush = d3.brushX()
+        .extent([[0, 0], [contextWidth, contextHeight]])
+        .on("brush end", brushed);
+      
+      const brushG = svgContext.append("g")
+        .attr("class", "brush")
+        .call(brush);
+      
+      // ブラシの初期位置は、初期表示範囲（initialExtent）を使う
+      if (savedBrushExtents[category]) {
+        brushG.call(brush.move, [xContext(savedBrushExtents[category][0]), xContext(savedBrushExtents[category][1])]);
+      } else {
+        brushG.call(brush.move, [xContext(initialExtent[0]), xContext(initialExtent[1])]);
+      }
+      
+      function brushed(event) {
+        const sel = event.selection;
+        if (!sel) return;
+        const [x0, x1] = sel.map(xContext.invert);
+        savedBrushExtents[category] = [x0, x1];
+        
+        xFocus.domain([x0, x1]);
+        const newTickInterval = computeTickInterval(xFocus.domain());
+        const newTickFormat = computeTickFormat(xFocus.domain());
+        
+        svgFocus.select(".x-axis")
+          .call(d3.axisBottom(xFocus).ticks(newTickInterval).tickFormat(newTickFormat));
+        removeOverlappingTicksX(svgFocus.select(".x-axis"));
+        
+        const visibleData = data.filter(d => d.date >= x0 && d.date <= x1);
+        const newYMax = d3.max(visibleData, d => d.value) || 0;
+        yFocus.domain([0, newYMax]);
+        
+        const newYTicks = computeCustomYAxisTicks(yFocus.domain()[1]);
+        svgFocus.select(".y-axis")
+          .call(d3.axisLeft(yFocus).tickValues(newYTicks));
+        
+        prefGroups.forEach(([pref, arr]) => {
+          const filtered = visibleData.filter(d => d.pref === pref);
+          svgFocus.selectAll(`.line-${pref}`)
+            .datum(filtered)
+            .attr("d", lineFocus);
+          svgFocus.selectAll(`circle.point-${pref}`)
+            .data(filtered, d => d.date)
+            .join(
+              enter => enter.append("circle")
+                .attr("class", `point-${pref}`)
+                .attr("r", 3)
+                .attr("fill", (pref === "全国") ? "blue" :
+                              (pref === "東京都") ? "red" : color(pref))
+                .attr("cx", d => xFocus(d.date))
+                .attr("cy", d => yFocus(d.value))
+                .on("mouseover", function(event, d) {
+                  d3.select(this).classed("highlight-circle", true);
+                  tooltip.transition().duration(200).style("opacity", 0.9);
+                  tooltip.html(`<strong>${pref}</strong><br>定点当たり患者数: ${d.value}<br>${d.weekLabel || ""}`)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function() {
+                  d3.select(this).classed("highlight-circle", false);
+                  tooltip.transition().duration(500).style("opacity", 0);
+                }),
+              update => update
+                .attr("cx", d => xFocus(d.date))
+                .attr("cy", d => yFocus(d.value)),
+              exit => exit.remove()
+            );
+        });
+        
+        // ハイライト状態の維持
+        updateVisibility(svgFocus, getSelectedDropdownPrefs());
+      }
+      
+      function updateVisibility(svg, prefs) {
+        if (!highlightedPref) {
+          prefs.forEach(p => {
+            svg.selectAll(`.line-${p}`).classed("inactive-line", false);
+            svg.selectAll(`circle.point-${p}`).classed("inactive-circle", false);
+          });
+        } else {
+          prefs.forEach(p => {
+            const fade = (p !== highlightedPref);
+            svg.selectAll(`.line-${p}`).classed("inactive-line", fade);
+            svg.selectAll(`circle.point-${p}`).classed("inactive-circle", fade);
+          });
+        }
+      }
+    }
+  </script>
+</body>
+</html>
