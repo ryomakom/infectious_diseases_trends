@@ -13,6 +13,74 @@ library(lubridate)
 
 ```{r}
 
+cleaned_diseases <- read_csv("merged_data/merged_data.csv")
+
+# CSVファイルを処理する関数
+process_csv <- function(file_path) {
+  # 2行目1列目のテキストを読み込む（エンコーディングを指定）
+  week_text <- read_csv(
+    file_path, 
+    locale = locale(encoding = "cp932"), 
+    col_names = FALSE, 
+    skip = 1, 
+    n_max = 1
+  ) %>%
+    pull(1)
+  
+  # デバッグ情報を表示
+  cat("Processing file:", file_path, "Week text:", week_text, "\n")
+  
+  # CSVファイルをすべて読み込み
+  data <- read_csv(file_path, locale = locale(encoding = "cp932"), col_names = FALSE)
+  
+  # 3行目の奇数列（3列目以降）のNAを左隣の値で埋める
+  data[3, ] <- data[3, ] %>%
+    as.data.frame() %>%
+    mutate(across(
+      .cols = everything(),
+      .fns = ~ {
+        col_index <- which(names(data) == cur_column()) # 現在の列インデックスを取得
+        if (col_index > 2 && col_index %% 2 == 1) { # 3列目以降かつ奇数列が対象
+          ifelse(
+            is.na(.), # NAか判定
+            data[3, col_index - 1][[1]], # 左隣の値をコピー
+            .
+          )
+        } else {
+          . # 対象外の列はそのまま
+        }
+      }
+    ))
+  
+  # 2列目以降の列名を作成（3行目と4行目を連結）
+  new_col_names <- names(data) %>%
+    map_chr(~ {
+      col_index <- which(names(data) == .x) # 現在の列インデックスを取得
+      if (col_index > 1) { # 2列目以降のみ処理
+        paste0(data[3, col_index][[1]], "_", data[4, col_index][[1]])
+      } else {
+        .x # 1列目はそのまま
+      }
+    })
+  
+  # 列名を変更
+  colnames(data) <- new_col_names
+  
+  # データの整形
+  data <- data %>%
+    slice(-1, -2, -3, -4) %>%  # 1～4行目を削除
+    mutate(week = week_text) %>% # 新しい列として week を追加
+    rename(pref = X1) %>% # 1列目を pref にリネーム
+    pivot_longer(
+      cols = -c(week, pref),
+      names_to = "category",
+      values_to = "value"
+    )
+  
+  return(data)
+}
+
+
 year_week <- read_csv("year_week.csv") %>%
   mutate(date=as.Date(date))
 
@@ -87,14 +155,17 @@ cleaned_diseases <- cleaned_diseases %>%
 
 cleaned_diseases %>% 
   filter(pref=="全国") %>% 
-  write_excel_csv("results/data-全国.csv")
+  write_excel_csv("data-全国.csv")
 
 cleaned_diseases %>% 
   filter(pref=="東京都") %>% 
-  write_excel_csv("results/data-東京都.csv")
+  write_excel_csv("data-東京都.csv")
 
 cleaned_diseases %>% 
   filter(!pref %in% c("全国","東京都")) %>% 
-  write_excel_csv("results/data-その他.csv")
+  write_excel_csv("data-その他.csv")
+
+cleaned_diseases %>% 
+  write_excel_csv("merged_data/merged_data.csv")
 ```
 
