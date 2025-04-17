@@ -163,8 +163,8 @@
     
     // 初期データ（例：東京都、全国）の読み込み
     Promise.all([
-      loadData("data/data-東京都.csv"),
-      loadData("data/data-全国.csv")
+      loadData("results/data-東京都.csv"),
+      loadData("results/data-全国.csv")
     ]).then(results => {
       results.forEach(dataset => { allData = allData.concat(dataset); });
       console.log("Essential data loaded. Total records:", allData.length);
@@ -177,7 +177,7 @@
     });
     
     function loadAdditionalData() {
-      loadData("data/data-その他.csv").then(dataOther => {
+      loadData("results/data-その他.csv").then(dataOther => {
         allData = allData.concat(dataOther);
         console.log("Additional data loaded. Total records:", allData.length);
       }).catch(err => {
