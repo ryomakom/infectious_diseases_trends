@@ -59,17 +59,17 @@ jobs:
           )'
 
       # 6. 初回処理
-#      - name: Render initial processing (first run only)
-#        env:
-#          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
-#        run: |
-#          if [ ! -f initialized.lock ]; then
-#            Rscript -e "rmarkdown::render('initial_processing.Rmd')"
-#            touch initialized.lock
-#          else
-#            echo "Initial processing already completed."
-#          fi
-#
+      - name: Render initial processing (first run only)
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
+        run: |
+          if [ ! -f initialized.lock ]; then
+            Rscript -e "rmarkdown::render('initial_processing.Rmd')"
+            touch initialized.lock
+          else
+            echo "Initial processing already completed."
+          fi
+
       # 7. 日次処理
       - name: Render daily task
         env:
