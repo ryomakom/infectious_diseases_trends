@@ -2,76 +2,45 @@ name: Run R Markdown Workflows
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # Runs daily at 00:00 UTC
-  workflow_dispatch:       # Allow manual dispatch
+    - cron: '0 0 * * *'      # daily 00:00 UTC
+  workflow_dispatch:
 
 jobs:
   run_r_code:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Check out the repository
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      # 2. Set up R
-      - name: Setup R
+      - name: Set up R
         uses: r-lib/actions/setup-r@v2
-        # You can optionally pin a version, e.g.:
-        # with:
-        #   r-version: '4.2.0'
 
-      # 3. Install system libraries needed to build tidyverse etc.
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pandoc \
-            libxml2-dev \
-            libicu-dev \
-            libssl-dev \
-            libcurl4-openssl-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libpng-dev \
-            libjpeg-dev \
-            libtiff5-dev
+      - name: Install Linux libraries required by R packages
+        uses: r-lib/actions/setup-system-dependencies@v2
+        with:
+          extra-packages: |
+            pandoc
+            libharfbuzz-dev
+            libfribidi-dev
 
-      # 4. Create a user library directory (if you want to install packages there)
-      - name: Create R library directory
-        run: mkdir -p ${{ github.workspace }}/Rlibrary
+      - name: Install required R packages (cached)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            rmarkdown
+            tidyverse
+            rvest
+            lubridate
 
-      # 5. Install required R packages into that user library
-      - name: Install required R packages
-        env:
-          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
-        run: |
-          Rscript -e 'install.packages(c("rmarkdown","tidyverse","rvest","lubridate"), 
-                                       repos="https://cloud.r-project.org", 
-                                       dependencies=TRUE)'
-
-      # 6. Verify that tidyverse loads
-      - name: Verify installed packages
-        env:
-          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
-        run: |
-          Rscript -e 'sessionInfo(); library(tidyverse); library(rvest); library(lubridate); cat("Packages loaded successfully!\n")'
-
-      # 7. Render initial processing if first run
-      - name: Render initial processing (if not already run)
-        env:
-          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
+      - name: Render initial processing (first run only)
         run: |
           if [ ! -f initialized.lock ]; then
             Rscript -e "rmarkdown::render('initial_processing.Rmd')"
             touch initialized.lock
           else
-            echo 'Initial processing already completed.'
+            echo "Initial processing already completed."
           fi
 
-      # 8. Render daily task
       - name: Render daily task
-        env:
-          R_LIBS_USER: ${{ github.workspace }}/Rlibrary
-        run: |
-          Rscript -e "rmarkdown::render('daily_task.Rmd')"
+        run: Rscript -e "rmarkdown::render('daily_task.Rmd')"
