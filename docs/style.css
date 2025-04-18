@@ -170,9 +170,9 @@ h1 {
 
 .brush .handle {
   /* 中塗りを純粋な黄色（半透明）に */
-  fill: rgba(255, 255, 0, 0.5);    /* 60% 半透明のイエロー */
+  fill: rgba(255, 255, 0, 0.744);    /* 60% 半透明のイエロー */
   /* 縁取りもイエローで、より不透明に */
-  stroke: rgba(255, 255, 0, 0.5);  /* 90% 半透明のイエロー */
+  stroke: rgba(255, 136, 0, 0.5);  /* 90% 半透明のイエロー */
   stroke-width: 10px;
   vector-effect: non-scaling-stroke;
   
