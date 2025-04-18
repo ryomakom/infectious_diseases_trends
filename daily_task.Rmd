@@ -81,91 +81,168 @@ process_csv <- function(file_path) {
 }
 
 
+
+# — year_week.csv 読み込み —
 year_week <- read_csv("year_week.csv") %>%
-  mutate(date=as.Date(date))
+  mutate(date = as.Date(date))
 
-# 今日の日付を取得
-today <- Sys.Date()
+# — 今日と5日前 —
+today           <- Sys.Date()
+five_days_before <- today - days(5)
 
-# 9日前の日付
-nine_days_before <- today - days(9)
-
-# 9日前より以前で最新の日付を選択し、年・週ラベルを出力
-closest_week <- year_week %>%
-  filter(date <= nine_days_before) %>%
-  tail(1) %>% 
+# — 5日前以前の最新2週取得 —
+distinct_weeks <- year_week %>%
+  filter(date <= five_days_before) %>%
+  arrange(date) %>%
+  tail(2) %>%
   pull(year_week)
 
+# — ディレクトリ準備 —
+data_dir <- "data"
+log_dir  <- "logs"
+if (!dir.exists(data_dir)) dir.create(data_dir)
+if (!dir.exists(log_dir))  dir.create(log_dir)
 
-# 年と週に分割
-parts <- strsplit(closest_week, "-")[[1]]
-year <- parts[1]
-week <- parts[2]
+# — 累積ログファイル設定 —
+log_file <- file.path(log_dir, "log.csv")
 
-# URLを生成
-url <- sprintf("https://id-info.jihs.go.jp/surveillance/idwr/jp/rapid/%s/%s/%s-teiten.csv", year, week, closest_week)
-
-local_file <- sprintf("data/%s-teiten.csv", closest_week)  # ローカルに保存するファイル名
-
-# 当該ファイルがないときにのみダウンロードを実行する
-if (!file.exists(local_file)) {
-  download.file(url, destfile = local_file, mode = "wb")
+# — 既存ログ読み込みまたは空の tibble —
+if (file.exists(log_file)) {
+  existing_logs <- read_csv(
+    log_file,
+    col_types = cols(
+      timestamp  = col_character(),
+      week_label = col_character(),
+      action     = col_character(),
+      rows       = col_integer()
+    )
+  )
 } else {
-  message("ファイルは既に存在しています。")
+  existing_logs <- tibble(
+    timestamp  = character(),
+    week_label = character(),
+    action     = character(),
+    rows       = integer()
+  )
 }
 
-# CSVファイルを読み込む
-latest_data <- process_csv(local_file) %>% 
-  mutate(year=as.double(str_sub(week,1,4))) %>% 
-  mutate(week_num=str_sub(week,6,7)) %>% 
-  mutate(date=as.Date(str_c(year,"-",str_sub(week,17,18),"-",str_sub(week,20,21)))) %>% 
-  dplyr::select(date,year,pref,category,value,everything()) %>% 
-  mutate(pref=ifelse(pref=="総数","全国",pref)) %>% 
-  filter(!is.na(pref)) %>% 
-      # 日付部分を列に展開
-  bind_cols(
-    str_match(.$week,
-      "(\\d{4})年\\d+週\\((\\d{1,2})月(\\d{1,2})日～(\\d{1,2})月(\\d{1,2})日\\)"
-    ) %>%
-      as_tibble(.name_repair = "minimal") %>%
-      setNames(c("full", "year_str", "m1", "d1", "m2", "d2"))
-  ) %>%
-  # 必要な列を整数に変換
-  mutate(across(c(m1, d1, m2, d2), ~ as.integer(.))) %>%
-  # ラベルを作成（条件付きで）
-  mutate(week_label_clean = ifelse(
-    is.na(year_str), NA_character_,
-    sprintf("%d月%d日～%d月%d日（%s年）",
-            m1, d1, m2, d2, year_str)
-  )) %>%
-  # 不要列削除
-  dplyr::select(-full, -year_str, -m1, -d1, -m2, -d2) %>%
-  # 以降の処理を継続
-  filter(str_detect(category, "定当")) %>% 
-  mutate(category = str_remove(category, "_定当")) %>% 
-  dplyr::select(date, pref, category, value, year, week_label_clean) %>%
-  mutate(value = as.double(value)) %>%
-  filter(!(category == "ＲＳウイルス感染症" & is.na(value))) %>%
-  mutate(value = ifelse(is.na(value), 0, value))
+# — 初期化 —
+log_entries <- list()
+data_list   <- list()
 
+for (week_label in distinct_weeks) {
+  ts        <- Sys.time()
+  parts     <- str_split(week_label, "-")[[1]]
+  url       <- sprintf(
+    "https://id-info.jihs.go.jp/surveillance/idwr/jp/rapid/%s/%s/%s-teiten.csv",
+    parts[1], parts[2], week_label
+  )
+  local_file <- file.path(data_dir, sprintf("%s-teiten.csv", week_label))
 
-cleaned_diseases <- cleaned_diseases %>%
-  bind_rows(latest_data) %>%
+  if (!file.exists(local_file)) {
+    # ダウンロード試行
+    success <- tryCatch(
+      {
+        download.file(url, destfile = local_file, mode = "wb")
+        TRUE
+      },
+      error = function(e) FALSE
+    )
+
+    if (success && file.exists(local_file)) {
+      # ダウンロード成功 → 処理
+      df <- process_csv(local_file) %>%
+        mutate(
+          year     = as.double(str_sub(week_label, 1, 4)),
+          week_num = str_sub(week_label, 6, 7)
+        ) %>%
+        mutate(date = as.Date(str_c(year, "-", week_num, "-01"))) %>%
+        select(date, year, pref, category, value, everything()) %>%
+        mutate(pref = ifelse(pref == "総数", "全国", pref)) %>%
+        filter(!is.na(pref)) %>%
+        # 日付部分を列に展開
+        bind_cols(
+          str_match(
+            .$week_label,
+            "(\\d{4})年\\d+週\\((\\d{1,2})月(\\d{1,2})日～(\\d{1,2})月(\\d{1,2})日\\)"
+          ) %>%
+            as_tibble(.name_repair = "minimal") %>%
+            setNames(c("full", "year_str", "m1", "d1", "m2", "d2"))
+        ) %>%
+        # 必要な列を整数に変換
+        mutate(across(c(m1, d1, m2, d2), as.integer)) %>%
+        # ラベルを作成（条件付きで）
+        mutate(
+          week_label_clean = ifelse(
+            is.na(year_str),
+            NA_character_,
+            sprintf("%d月%d日～%d月%d日（%s年）", m1, d1, m2, d2, year_str)
+          )
+        ) %>%
+        # 不要列削除
+        select(-full, -year_str, -m1, -d1, -m2, -d2) %>%
+        filter(str_detect(category, "定当")) %>%
+        mutate(category = str_remove(category, "_定当")) %>%
+        # 最終的に必要な列順に整形
+        select(date, pref, category, value, year, week_label_clean) %>%
+        mutate(value = as.double(value)) %>%
+        filter(!(category == "ＲＳウイルス感染症" & is.na(value))) %>%
+        mutate(value = ifelse(is.na(value), 0, value))
+
+      log_entry <- tibble(
+        timestamp  = as.character(ts),
+        week_label = week_label,
+        action     = "downloaded",
+        rows       = nrow(df)
+      )
+      data_list[[week_label]] <- df
+    } else {
+      # ダウンロード失敗 (ファイルなし等)
+      log_entry <- tibble(
+        timestamp  = as.character(ts),
+        week_label = week_label,
+        action     = "not_found",
+        rows       = NA_integer_
+      )
+    }
+  } else {
+    # 既存ファイルはスキップ
+    log_entry <- tibble(
+      timestamp  = as.character(ts),
+      week_label = week_label,
+      action     = "skipped",
+      rows       = NA_integer_
+    )
+  }
+
+  # ログ追加
+  log_entries <- append(log_entries, list(log_entry))
+  Sys.sleep(5)
+}
+
+# — ログ結合＆出力 —
+new_logs <- bind_rows(log_entries)
+all_logs <- bind_rows(existing_logs, new_logs) %>%
   distinct()
 
-cleaned_diseases %>% 
-  filter(pref=="全国") %>% 
-  write_excel_csv("docs/results/data-全国.csv")
+write_csv(all_logs, log_file)
 
-cleaned_diseases %>% 
-  filter(pref=="東京都") %>% 
-  write_excel_csv("docs/results/data-東京都.csv")
+# 新規データがあれば統合＆出力
+if (length(data_list) > 0) {
+  latest_data <- bind_rows(data_list) %>% distinct()
+  cleaned_diseases <- cleaned_diseases %>%
+    bind_rows(latest_data) %>% distinct()
+  cleaned_diseases %>%
+    filter(pref == "全国")  %>% write_excel_csv("results/data-全国.csv")
+  cleaned_diseases %>%
+    filter(pref == "東京都") %>% write_excel_csv("results/data-東京都.csv")
+  cleaned_diseases %>%
+    filter(!pref %in% c("全国","東京都")) %>% write_excel_csv("results/data-その他.csv")
+  cleaned_diseases %>% write_excel_csv("merged_data/merged_data.csv")
+} else {
+  message("新規データがありませんでした。")
+}
 
-cleaned_diseases %>% 
-  filter(!pref %in% c("全国","東京都")) %>% 
-  write_excel_csv("docs/results/data-その他.csv")
 
-cleaned_diseases %>% 
-  write_excel_csv("merged_data/merged_data.csv")
 ```
 
