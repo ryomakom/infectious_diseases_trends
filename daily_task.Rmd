@@ -100,6 +100,8 @@ distinct_weeks <- year_week %>%
 # — ディレクトリ準備 —
 data_dir <- "data"
 log_dir  <- "logs"
+if (!dir.exists(data_dir)) dir.create(data_dir)
+if (!dir.exists(log_dir))  dir.create(log_dir)
 
 # — 累積ログファイル設定 —
 log_file <- file.path(log_dir, "log.csv")
@@ -151,17 +153,19 @@ for (week_label in distinct_weeks) {
       # ダウンロード成功 → 処理
       df <- process_csv(local_file) %>%
         mutate(
-          year     = as.double(str_sub(week_label, 1, 4)),
-          week_num = str_sub(week_label, 6, 7)
+          year     = as.double(str_sub(week, 1, 4)),
+          week_num = str_sub(week, 6, 7)
         ) %>%
-        mutate(date = as.Date(str_c(year, "-", week_num, "-01"))) %>%
+        mutate(date = as.Date(str_c(year, "-",
+                                    str_sub(week,-7,-6),"-",
+                                    str_sub(week,-4,-3)))) %>%
         select(date, year, pref, category, value, everything()) %>%
         mutate(pref = ifelse(pref == "総数", "全国", pref)) %>%
         filter(!is.na(pref)) %>%
         # 日付部分を列に展開
         bind_cols(
           str_match(
-            .$week_label,
+            .$week,
             "(\\d{4})年\\d+週\\((\\d{1,2})月(\\d{1,2})日～(\\d{1,2})月(\\d{1,2})日\\)"
           ) %>%
             as_tibble(.name_repair = "minimal") %>%
@@ -231,11 +235,11 @@ if (length(data_list) > 0) {
   cleaned_diseases <- cleaned_diseases %>%
     bind_rows(latest_data) %>% distinct()
   cleaned_diseases %>%
-    filter(pref == "全国")  %>% write_excel_csv("results/data-全国.csv")
+    filter(pref == "全国")  %>% write_excel_csv("docs/results/data-全国.csv")
   cleaned_diseases %>%
-    filter(pref == "東京都") %>% write_excel_csv("results/data-東京都.csv")
+    filter(pref == "東京都") %>% write_excel_csv("docs/results/data-東京都.csv")
   cleaned_diseases %>%
-    filter(!pref %in% c("全国","東京都")) %>% write_excel_csv("results/data-その他.csv")
+    filter(!pref %in% c("全国","東京都")) %>% write_excel_csv("docs/results/data-その他.csv")
   cleaned_diseases %>% write_excel_csv("merged_data/merged_data.csv")
 } else {
   message("新規データがありませんでした。")
